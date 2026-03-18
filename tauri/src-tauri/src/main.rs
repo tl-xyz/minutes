@@ -5,7 +5,6 @@ use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager,
 };
 
 mod commands;
@@ -16,19 +15,17 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_notification::init())
         .manage(commands::AppState {
             recording: recording.clone(),
         })
         .setup(move |app| {
-            // Build tray menu
-            let record_item = MenuItem::with_id(app, "record", "Start Recording", true, None::<&str>)?;
+            let record_item =
+                MenuItem::with_id(app, "record", "Start Recording", true, None::<&str>)?;
             let stop_item = MenuItem::with_id(app, "stop", "Stop Recording", true, None::<&str>)?;
-            let separator = MenuItem::with_id(app, "sep1", "──────────", false, None::<&str>)?;
-            let list_item = MenuItem::with_id(app, "list", "Recent Meetings", true, None::<&str>)?;
-            let search_item = MenuItem::with_id(app, "search", "Search...", true, None::<&str>)?;
-            let separator2 = MenuItem::with_id(app, "sep2", "──────────", false, None::<&str>)?;
-            let setup_item = MenuItem::with_id(app, "setup", "Setup...", true, None::<&str>)?;
+            let sep = MenuItem::with_id(app, "sep1", "──────────", false, None::<&str>)?;
+            let list_item =
+                MenuItem::with_id(app, "list", "Open Meetings Folder", true, None::<&str>)?;
+            let sep2 = MenuItem::with_id(app, "sep2", "──────────", false, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Minutes", true, None::<&str>)?;
 
             let menu = Menu::with_items(
@@ -36,27 +33,23 @@ fn main() {
                 &[
                     &record_item,
                     &stop_item,
-                    &separator,
+                    &sep,
                     &list_item,
-                    &search_item,
-                    &separator2,
-                    &setup_item,
+                    &sep2,
                     &quit_item,
                 ],
             )?;
 
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("Minutes — conversation memory")
+                .tooltip("Minutes")
                 .on_menu_event(move |app, event| {
                     let recording = recording_clone.clone();
                     match event.id.as_ref() {
                         "record" => {
                             if recording.load(Ordering::Relaxed) {
-                                eprintln!("Already recording");
                                 return;
                             }
-                            // Start recording in background thread
                             let app_handle = app.clone();
                             let rec = recording.clone();
                             std::thread::spawn(move || {
@@ -64,20 +57,12 @@ fn main() {
                             });
                         }
                         "stop" => {
-                            if !recording.load(Ordering::Relaxed) {
-                                eprintln!("Not recording");
-                                return;
-                            }
                             recording.store(false, Ordering::Relaxed);
                         }
                         "list" => {
-                            // Open meetings directory in Finder
-                            let meetings_dir = dirs::home_dir()
-                                .unwrap_or_default()
-                                .join("meetings");
-                            let _ = std::process::Command::new("open")
-                                .arg(meetings_dir)
-                                .spawn();
+                            let meetings_dir =
+                                dirs::home_dir().unwrap_or_default().join("meetings");
+                            let _ = std::process::Command::new("open").arg(meetings_dir).spawn();
                         }
                         "quit" => {
                             if recording.load(Ordering::Relaxed) {
