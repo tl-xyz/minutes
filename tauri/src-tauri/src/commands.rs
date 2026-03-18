@@ -253,6 +253,60 @@ pub fn cmd_open_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn cmd_needs_setup() -> serde_json::Value {
+    let config = Config::load();
+    let model_name = &config.transcription.model;
+    let model_dir = &config.transcription.model_path;
+    let model_file = model_dir.join(format!("ggml-{}.bin", model_name));
+    let has_model = model_file.exists();
+
+    let meetings_dir = config.output_dir.clone();
+    let has_meetings_dir = meetings_dir.exists();
+
+    serde_json::json!({
+        "needsSetup": !has_model,
+        "hasModel": has_model,
+        "modelName": model_name,
+        "hasMeetingsDir": has_meetings_dir,
+    })
+}
+
+#[tauri::command]
+pub fn cmd_download_model(model: String) -> Result<String, String> {
+    let config = Config::load();
+    let model_dir = &config.transcription.model_path;
+    let model_file = model_dir.join(format!("ggml-{}.bin", model));
+
+    if model_file.exists() {
+        return Ok(format!("Model '{}' already downloaded", model));
+    }
+
+    std::fs::create_dir_all(model_dir).map_err(|e| e.to_string())?;
+
+    let url = format!(
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{}.bin",
+        model
+    );
+
+    eprintln!("[minutes] Downloading model: {} from {}", model, url);
+
+    let status = std::process::Command::new("curl")
+        .args(["-L", "-o", &model_file.to_string_lossy(), &url, "--progress-bar"])
+        .status()
+        .map_err(|e| format!("curl failed: {}", e))?;
+
+    if !status.success() {
+        return Err("Download failed".into());
+    }
+
+    let size = std::fs::metadata(&model_file)
+        .map(|m| m.len() / (1024 * 1024))
+        .unwrap_or(0);
+
+    Ok(format!("Downloaded '{}' model ({} MB)", model, size))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

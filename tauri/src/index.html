@@ -394,6 +394,152 @@
     <button class="btn btn-primary" id="btn-record">Start Recording</button>
   </div>
 
+  <!-- Onboarding overlay (shown on first run when no whisper model) -->
+  <div class="onboarding" id="onboarding" style="display: none;">
+    <div class="onboarding-content">
+      <div class="onboarding-icon">🎙</div>
+      <h2>Welcome to Minutes</h2>
+      <p class="onboarding-sub">Let's get you set up. This takes about 30 seconds.</p>
+
+      <div class="onboarding-steps">
+        <div class="onboarding-step" id="step-model">
+          <div class="step-header">
+            <span class="step-num">1</span>
+            <span class="step-title">Download speech model</span>
+            <span class="step-status" id="step-model-status"></span>
+          </div>
+          <div class="step-body" id="step-model-body">
+            <p>Choose a model size:</p>
+            <div class="model-options">
+              <button class="btn btn-secondary btn-sm model-btn" data-model="tiny">Tiny (75 MB, fast)</button>
+              <button class="btn btn-primary btn-sm model-btn" data-model="base">Base (141 MB, recommended)</button>
+              <button class="btn btn-secondary btn-sm model-btn" data-model="small">Small (466 MB, best accuracy)</button>
+            </div>
+            <div class="download-progress" id="download-progress" style="display: none;">
+              <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+              <span class="progress-text" id="progress-text">Downloading...</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="onboarding-step disabled" id="step-ready">
+          <div class="step-header">
+            <span class="step-num">2</span>
+            <span class="step-title">Ready to go</span>
+          </div>
+          <div class="step-body">
+            <p>Record meetings, take voice memos, and search everything with AI.</p>
+            <button class="btn btn-primary" id="btn-finish-setup" disabled>Start Using Minutes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .onboarding {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .onboarding-content {
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .onboarding-icon { font-size: 48px; margin-bottom: 12px; }
+
+    .onboarding-content h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .onboarding-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .onboarding-steps { text-align: left; }
+
+    .onboarding-step {
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+    }
+
+    .onboarding-step.disabled { opacity: 0.4; pointer-events: none; }
+    .onboarding-step.done { border-color: var(--green); }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .step-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .onboarding-step.done .step-num {
+      background: var(--green);
+      color: #000;
+    }
+
+    .step-title { font-size: 14px; font-weight: 500; flex: 1; }
+
+    .step-status {
+      font-size: 11px;
+      color: var(--green);
+      font-weight: 600;
+    }
+
+    .step-body { padding-left: 32px; }
+    .step-body p { font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
+
+    .model-options { display: flex; flex-direction: column; gap: 6px; }
+    .model-btn { text-align: left; }
+
+    .download-progress { margin-top: 10px; }
+
+    .progress-bar {
+      height: 4px;
+      background: var(--bg-elevated);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .progress-text { font-size: 11px; color: var(--text-secondary); }
+  </style>
+
   <script>
     const { invoke } = window.__TAURI__.core;
 
@@ -630,7 +776,69 @@
       }, 250);
     });
 
+    // ── Onboarding ──
+    async function checkSetup() {
+      try {
+        const setup = await invoke('cmd_needs_setup');
+        if (setup.needsSetup) {
+          document.getElementById('onboarding').style.display = 'flex';
+          setupOnboarding();
+        }
+      } catch (e) {
+        console.error('Setup check:', e);
+      }
+    }
+
+    function setupOnboarding() {
+      document.querySelectorAll('.model-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const model = btn.dataset.model;
+          document.querySelectorAll('.model-btn').forEach(b => b.disabled = true);
+
+          const progress = document.getElementById('download-progress');
+          const fill = document.getElementById('progress-fill');
+          const text = document.getElementById('progress-text');
+          progress.style.display = 'block';
+
+          // Animate progress (curl doesn't give us real progress via invoke)
+          fill.style.width = '20%';
+          text.textContent = `Downloading ${model} model...`;
+
+          const progressTimer = setInterval(() => {
+            const current = parseFloat(fill.style.width);
+            if (current < 85) fill.style.width = (current + 2) + '%';
+          }, 500);
+
+          try {
+            const result = await invoke('cmd_download_model', { model });
+            clearInterval(progressTimer);
+            fill.style.width = '100%';
+            text.textContent = result;
+
+            document.getElementById('step-model').classList.add('done');
+            document.getElementById('step-model-status').textContent = 'Done';
+            document.getElementById('step-model-body').style.display = 'none';
+
+            document.getElementById('step-ready').classList.remove('disabled');
+            document.getElementById('btn-finish-setup').disabled = false;
+          } catch (e) {
+            clearInterval(progressTimer);
+            fill.style.width = '0%';
+            fill.style.background = 'var(--red)';
+            text.textContent = `Error: ${e}`;
+            document.querySelectorAll('.model-btn').forEach(b => b.disabled = false);
+          }
+        });
+      });
+
+      document.getElementById('btn-finish-setup').addEventListener('click', () => {
+        document.getElementById('onboarding').style.display = 'none';
+        loadMeetings();
+      });
+    }
+
     // ── Init ──
+    checkSetup();
     checkStatus();
     loadMeetings();
     setInterval(() => { if (!pollInterval) checkStatus(); }, 2000);
