@@ -4,6 +4,7 @@
 # Build artifacts
 target/
 node_modules/
+dist/
 
 # Environment
 .env
