@@ -73,6 +73,8 @@ cargo tauri build --bundles app
 
 The desktop app adds a system tray icon, recording controls, audio visualizer, and a meeting list window. macOS will prompt for microphone permission on first recording.
 
+**Privacy:** All Minutes windows are hidden from screen sharing by default — other participants on Zoom/Meet/Teams won't see the app. Toggle via the tray menu: "Hide from Screen Share ✓".
+
 ### Signed macOS releases
 
 Maintainers can build signed and notarized desktop releases with the GitHub
@@ -133,6 +135,19 @@ minutes list                                      # Recent recordings
 ```bash
 minutes note --meeting ~/meetings/2026-03-17-pricing.md "Alex confirmed via email"
 ```
+
+### Screen context (opt-in)
+
+Capture periodic screenshots during recording so the LLM knows what was on screen when someone said "look at this number." Screenshots are sent as images to vision-capable LLMs (Claude, GPT-4o).
+
+```toml
+# ~/.config/minutes/config.toml
+[screen_context]
+enabled = true
+interval_secs = 30
+```
+
+Privacy: disabled by default, screenshots are 0600 permissions, auto-deleted after summarization, downscaled to 1280px. Requires Screen Recording permission on macOS.
 
 ## Output format
 
