@@ -1659,15 +1659,16 @@
 
       <!-- Summarization -->
       <div style="margin-bottom: 16px;">
-        <div class="about-item-title">SUMMARIZATION</div>
+        <div class="about-item-title">AUTO-SUMMARIZATION</div>
         <div class="about-controls">
           <div class="about-controls-group">
-            <div class="about-controls-copy">LLM engine for automatic summaries</div>
-            <select id="settings-summarization-engine" style="margin-top: 6px; width: 100%; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text); font-size: 13px;">
-              <option value="none">None — Claude summarizes via MCP when you ask</option>
-              <option value="claude">Claude API (requires ANTHROPIC_API_KEY)</option>
-              <option value="openai">OpenAI API (requires OPENAI_API_KEY)</option>
-              <option value="ollama">Ollama (local, free)</option>
+            <div class="about-controls-copy">Automatic pipeline summarization</div>
+            <div class="about-controls-meta" style="margin-bottom: 6px;">By default, Claude summarizes your meetings conversationally via MCP — no configuration needed. Turn this on only if you want summaries generated automatically in the recording pipeline.</div>
+            <select id="settings-summarization-engine" style="width: 100%; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text); font-size: 13px;">
+              <option value="none">Off — Claude summarizes when you ask (recommended)</option>
+              <option value="ollama">Ollama — local, free, runs on your machine</option>
+              <option value="claude">Claude API — uses your Anthropic API key</option>
+              <option value="openai">OpenAI API — uses your OpenAI API key</option>
             </select>
             <div class="about-controls-meta" id="settings-summarization-status"></div>
           </div>
@@ -2831,12 +2832,80 @@
     detailOverlay.addEventListener('click', (e) => {
       if (e.target === detailOverlay) closeDetailView();
     });
-    document.getElementById('btn-about').addEventListener('click', () => {
-      aboutOverlay.classList.add('active');
+    // Settings overlay
+    const settingsOverlay = document.getElementById('settings-overlay');
+    function openSettings() { settingsOverlay.classList.add('active'); loadSettings(); }
+    function closeSettings() { settingsOverlay.classList.remove('active'); }
+
+    document.getElementById('btn-settings').addEventListener('click', openSettings);
+    document.getElementById('btn-settings-close').addEventListener('click', closeSettings);
+    settingsOverlay.addEventListener('click', (e) => { if (e.target === settingsOverlay) closeSettings(); });
+
+    // ⌘, keyboard shortcut
+    document.addEventListener('keydown', (e) => { if (e.metaKey && e.key === ',') { e.preventDefault(); openSettings(); } });
+
+    async function loadSettings() {
+      try {
+        const s = await invoke('cmd_get_settings');
+        document.getElementById('settings-config-path').textContent = s.config_path;
+        document.getElementById('settings-whisper-model').value = s.transcription.model;
+        const dl = s.transcription.downloaded_models || [];
+        document.getElementById('settings-model-status').textContent = dl.length ? 'Downloaded: ' + dl.join(', ') : 'No models downloaded yet.';
+        setSettingsToggle('settings-diarization', s.diarization.engine !== 'none');
+        document.getElementById('settings-summarization-engine').value = s.summarization.engine;
+        updateSumStatus(s);
+        setSettingsToggle('settings-screen-context', s.screen_context.enabled);
+        document.getElementById('settings-screen-interval-row').style.display = s.screen_context.enabled ? '' : 'none';
+        document.getElementById('settings-screen-interval').value = String(s.screen_context.interval_secs);
+        const agents = await invoke('cmd_list_agents');
+        const sel = document.getElementById('settings-agent');
+        sel.innerHTML = '';
+        for (const a of agents) { const o = document.createElement('option'); o.value = a.name; o.textContent = a.name; sel.appendChild(o); }
+        sel.value = s.assistant.agent;
+        document.getElementById('settings-agent-status').textContent = agents.length + ' agent(s) installed';
+        loadStorageStats();
+      } catch (e) { console.error('loadSettings:', e); }
+    }
+    function setSettingsToggle(id, on) { const b = document.getElementById(id); b.textContent = on ? 'On' : 'Off'; b.style.opacity = on ? '1' : '0.5'; }
+    function updateSumStatus(s) {
+      const el = document.getElementById('settings-summarization-status');
+      if (s.summarization.engine === 'none') el.textContent = '';
+      else if (s.summarization.engine === 'ollama') el.textContent = s.summarization.ollama_reachable ? 'Ollama reachable (' + s.summarization.ollama_model + ')' : 'Ollama not reachable at ' + s.summarization.ollama_url;
+      else if (s.summarization.engine === 'claude') el.textContent = s.summarization.anthropic_key_set ? 'API key set' : 'ANTHROPIC_API_KEY not found in environment';
+      else if (s.summarization.engine === 'openai') el.textContent = s.summarization.openai_key_set ? 'API key set' : 'OPENAI_API_KEY not found in environment';
+    }
+    async function loadStorageStats() {
+      try {
+        const st = await invoke('cmd_get_storage_stats');
+        const f = (b) => b > 1073741824 ? (b/1073741824).toFixed(1)+' GB' : b > 1048576 ? (b/1048576).toFixed(0)+' MB' : (b/1024).toFixed(0)+' KB';
+        document.getElementById('settings-storage-info').textContent =
+          'Meetings: '+f(st.meetings.bytes)+' ('+st.meetings.count+' files)  •  Memos: '+f(st.memos.bytes)+' ('+st.memos.count+')  •  Models: '+f(st.models.bytes)+'  •  Screenshots: '+f(st.screens.bytes)+'  •  Total: '+f(st.total_bytes);
+      } catch(e) { document.getElementById('settings-storage-info').textContent = 'Could not load.'; }
+    }
+    // Settings change handlers
+    document.getElementById('settings-whisper-model').addEventListener('change', (e) => invoke('cmd_set_setting', {section:'transcription',key:'model',value:e.target.value}));
+    document.getElementById('settings-diarization').addEventListener('click', async () => {
+      const s = await invoke('cmd_get_settings');
+      const next = s.diarization.engine==='none'?'pyannote':'none';
+      await invoke('cmd_set_setting', {section:'diarization',key:'engine',value:next});
+      setSettingsToggle('settings-diarization', next!=='none');
     });
-    document.getElementById('btn-about-close').addEventListener('click', closeAbout);
-    aboutOverlay.addEventListener('click', (e) => {
-      if (e.target === aboutOverlay) closeAbout();
+    document.getElementById('settings-summarization-engine').addEventListener('change', async (e) => {
+      await invoke('cmd_set_setting', {section:'summarization',key:'engine',value:e.target.value});
+      const s = await invoke('cmd_get_settings'); updateSumStatus(s);
+    });
+    document.getElementById('settings-screen-context').addEventListener('click', async () => {
+      const s = await invoke('cmd_get_settings');
+      const next = !s.screen_context.enabled;
+      await invoke('cmd_set_setting', {section:'screen_context',key:'enabled',value:String(next)});
+      setSettingsToggle('settings-screen-context', next);
+      document.getElementById('settings-screen-interval-row').style.display = next ? '' : 'none';
+    });
+    document.getElementById('settings-screen-interval').addEventListener('change', (e) => invoke('cmd_set_setting', {section:'screen_context',key:'interval_secs',value:e.target.value}));
+    document.getElementById('settings-agent').addEventListener('change', (e) => invoke('cmd_set_setting', {section:'assistant',key:'agent',value:e.target.value}));
+    document.getElementById('settings-screen-share').addEventListener('click', () => {
+      const b = document.getElementById('settings-screen-share');
+      setSettingsToggle('settings-screen-share', b.textContent!=='On');
     });
     notificationToggle.addEventListener('click', async () => {
       const next = !notifyOnCompletion;
