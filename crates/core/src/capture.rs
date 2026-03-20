@@ -30,10 +30,11 @@ pub fn audio_level() -> u32 {
 /// Start recording audio from the default input device.
 /// Blocks until `stop_flag` is set to true (via signal handler).
 /// Writes raw PCM to a WAV file at the given path.
+/// If screen context is enabled, also captures periodic screenshots.
 pub fn record_to_wav(
     output_path: &Path,
     stop_flag: Arc<AtomicBool>,
-    _config: &Config,
+    config: &Config,
 ) -> Result<(), CaptureError> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
@@ -236,6 +237,27 @@ pub fn record_to_wav(
         .map_err(|e| CaptureError::Io(std::io::Error::other(format!("stream play: {}", e))))?;
 
     tracing::info!("audio capture started");
+
+    // Start screen context capture if enabled
+    let _screen_handle = if config.screen_context.enabled {
+        let screen_dir = crate::screen::screens_dir_for(output_path);
+        match crate::screen::start_capture(
+            &screen_dir,
+            std::time::Duration::from_secs(config.screen_context.interval_secs),
+            Arc::clone(&stop_flag),
+        ) {
+            Ok(handle) => {
+                eprintln!("[minutes] Screen context capture enabled (every {}s)", config.screen_context.interval_secs);
+                Some(handle)
+            }
+            Err(e) => {
+                tracing::warn!("screen capture init failed: {} — continuing without screen context", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Wait for stop signal
     while !stop_flag.load(Ordering::Relaxed) {

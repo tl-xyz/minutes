@@ -20,6 +20,7 @@ pub struct Config {
     pub security: SecurityConfig,
     pub watch: WatchConfig,
     pub assistant: AssistantConfig,
+    pub screen_context: ScreenContextConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,9 +79,27 @@ pub struct WatchConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct ScreenContextConfig {
+    pub enabled: bool,
+    pub interval_secs: u64,
+    pub keep_after_summary: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AssistantConfig {
     pub agent: String,
     pub agent_args: Vec<String>,
+}
+
+impl Default for ScreenContextConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_secs: 30,
+            keep_after_summary: false,
+        }
+    }
 }
 
 impl Default for AssistantConfig {
@@ -114,6 +133,7 @@ impl Default for Config {
             security: SecurityConfig::default(),
             watch: WatchConfig::default(),
             assistant: AssistantConfig::default(),
+            screen_context: ScreenContextConfig::default(),
         }
     }
 }

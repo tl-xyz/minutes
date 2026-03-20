@@ -299,6 +299,11 @@ engine = "builtin"        # builtin (regex) or qmd (semantic)
 paths = ["~/.minutes/inbox"]
 settle_delay_ms = 2000    # iCloud sync safety delay
 
+[screen_context]
+enabled = false           # Opt-in: capture screenshots during recording for LLM context
+interval_secs = 30        # How often to capture (seconds)
+keep_after_summary = false # Delete screenshots after summarization (default: clean up)
+
 [assistant]
 agent = "claude"          # CLI launched by the Tauri AI Assistant
 agent_args = []           # Optional extra args, e.g. ["--dangerously-skip-permissions"]

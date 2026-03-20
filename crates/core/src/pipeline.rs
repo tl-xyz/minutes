@@ -144,19 +144,47 @@ where
     let mut structured_decisions: Vec<markdown::Decision> = Vec::new();
     let mut structured_intents: Vec<markdown::Intent> = Vec::new();
 
+    // Collect screen context screenshots (if any were captured)
+    let screen_dir = crate::screen::screens_dir_for(audio_path);
+    let screen_files = if screen_dir.exists() {
+        let files = crate::screen::list_screenshots(&screen_dir);
+        if !files.is_empty() {
+            tracing::info!(count = files.len(), "screen context screenshots found");
+        }
+        files
+    } else {
+        vec![]
+    };
+
     let summary: Option<String> = if config.summarization.engine != "none" {
         on_progress(PipelineStage::Summarizing);
         tracing::info!(step = "summarize", "generating summary");
-        let transcript_with_notes = if let Some(ref n) = user_notes {
-            format!(
-                "USER NOTES (these moments were marked as important — weight them heavily):\n{}\n\n\
-                 TRANSCRIPT:\n{}",
-                n, transcript
-            )
-        } else {
+        let mut context_parts = Vec::new();
+
+        if let Some(ref n) = user_notes {
+            context_parts.push(format!(
+                "USER NOTES (these moments were marked as important — weight them heavily):\n{}",
+                n
+            ));
+        }
+
+        if !screen_files.is_empty() {
+            context_parts.push(format!(
+                "SCREEN CONTEXT: {} screenshots were captured during this recording. \
+                 They are available at {} for visual context about what was on screen \
+                 during the meeting. Reference these when the speaker says things like \
+                 'look at this', 'that number', or 'what's on the screen'.",
+                screen_files.len(),
+                screen_dir.display()
+            ));
+        }
+
+        let transcript_with_context = if context_parts.is_empty() {
             transcript.clone()
+        } else {
+            format!("{}\n\nTRANSCRIPT:\n{}", context_parts.join("\n\n"), transcript)
         };
-        summarize::summarize(&transcript_with_notes, config).map(|s| {
+        summarize::summarize(&transcript_with_context, config).map(|s| {
             // Extract structured data from the summary
             structured_actions = extract_action_items(&s);
             structured_decisions = extract_decisions(&s);
@@ -234,6 +262,13 @@ where
         write_ms,
         serde_json::json!({"output": result.path.display().to_string(), "words": result.word_count}),
     );
+
+    // Clean up screen captures if configured
+    if !screen_files.is_empty() && !config.screen_context.keep_after_summary {
+        if std::fs::remove_dir_all(&screen_dir).is_ok() {
+            tracing::info!(dir = %screen_dir.display(), "screen captures cleaned up");
+        }
+    }
 
     let elapsed = start.elapsed();
     logging::log_step(

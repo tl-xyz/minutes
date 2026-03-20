@@ -9,6 +9,7 @@ pub mod markdown;
 pub mod notes;
 pub mod pid;
 pub mod pipeline;
+pub mod screen;
 pub mod search;
 pub mod summarize;
 pub mod transcribe;
