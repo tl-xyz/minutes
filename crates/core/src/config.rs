@@ -31,7 +31,6 @@ pub struct TranscriptionConfig {
     pub model: String,
     pub model_path: PathBuf,
     pub min_words: usize,
-    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,7 +182,6 @@ impl Default for TranscriptionConfig {
             model: "small".into(),
             model_path: minutes_dir().join("models"),
             min_words: 3,
-            language: Some("en".into()),
         }
     }
 }

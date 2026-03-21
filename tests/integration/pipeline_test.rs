@@ -15,7 +15,6 @@ fn test_config(output_dir: PathBuf) -> Config {
                 .join(".minutes")
                 .join("models"),
             min_words: 10,
-            language: Some("en".into()),
         },
         ..Config::default()
     }
