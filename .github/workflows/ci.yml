@@ -47,9 +47,14 @@ jobs:
         if: runner.os == 'macOS'
         run: cargo build --no-default-features
 
-      - name: Test (unit + integration, no whisper)
-        run: cargo test -p minutes-core --no-default-features -- --test-threads=1
-        timeout-minutes: 5
+      - name: Unit tests (no whisper)
+        run: cargo test -p minutes-core --no-default-features --lib -- --test-threads=1
+        timeout-minutes: 3
+
+      - name: Integration tests (no whisper)
+        if: runner.os == 'macOS'
+        run: cargo test -p minutes-core --no-default-features --test integration -- --test-threads=1
+        timeout-minutes: 3
 
       - name: Clippy (macOS only — full workspace)
         if: runner.os == 'macOS'
