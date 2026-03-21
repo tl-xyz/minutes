@@ -1,0 +1,77 @@
+# Build artifacts
+target/
+Minutes.app
+*.mcpb
+
+# Tauri app source (not needed for MCP extension)
+tauri/
+
+# Rust source (MCP server is Node.js only)
+crates/core/
+crates/cli/
+crates/reader/
+Cargo.toml
+Cargo.lock
+rust-toolchain.toml
+
+# Only dist is needed from crates/mcp, not source
+crates/mcp/src/
+crates/mcp/ui/
+crates/mcp/test/
+crates/mcp/tsconfig.json
+crates/mcp/vite.config.mjs
+
+# Dev dependencies not needed in MCPB bundle
+crates/mcp/node_modules/vite/
+crates/mcp/node_modules/vite-plugin-singlefile/
+# NOTE: @modelcontextprotocol/ext-apps is a RUNTIME dep (registerAppTool) — do NOT exclude
+crates/mcp/node_modules/typescript/
+crates/mcp/node_modules/tsx/
+crates/mcp/node_modules/@types/
+crates/mcp/node_modules/@esbuild/
+crates/mcp/node_modules/rollup/
+crates/mcp/node_modules/@rollup/
+crates/mcp/node_modules/postcss/
+crates/mcp/node_modules/esbuild/
+
+# Tests and integration tests
+tests/
+crates/mcp/test/
+
+# Claude Code plugin (separate from MCP extension)
+.claude/
+.agents/
+
+# Docs and dev files
+docs/
+scripts/
+CLAUDE.md
+PLAN.md
+BUILD-STATUS.md
+*.md
+!README.md
+
+# Issue tracker database
+.beads/
+
+# Old build artifacts (top-level dist only, not crates/mcp/dist)
+/dist/
+
+# Cowork extension (separate package)
+integrations/
+
+# CI/CD
+.github/
+
+# Launchd plist (dev convenience, not needed in extension)
+*.plist
+
+# Schema (informational, not needed at runtime)
+schema/
+
+# Git and misc
+.git/
+.gitignore
+.DS_Store
+*.log
+*.tmp
