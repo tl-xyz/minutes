@@ -48,7 +48,8 @@ jobs:
         run: cargo build --no-default-features
 
       - name: Test (unit + integration, no whisper)
-        run: cargo test -p minutes-core --no-default-features
+        run: cargo test -p minutes-core --no-default-features -- --test-threads=1
+        timeout-minutes: 5
 
       - name: Clippy (macOS only — full workspace)
         if: runner.os == 'macOS'
