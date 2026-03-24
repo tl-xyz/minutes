@@ -3,12 +3,8 @@
 ## ~~P1: Agent Memory SDK (TypeScript)~~ DONE
 **Shipped:** 2026-03-24. `minutes-sdk@0.7.1` on npm with README, usage examples (Vercel AI SDK, LangChain), `defaultDir()`, `listVoiceMemos()`, `findDecisions()`. 7 exported functions + 5 types.
 
-## P2: Claude Code Plugin Standalone Distribution — IN PROGRESS
-**What:** Publish the `.claude/plugins/minutes/` plugin so any Claude Code user can install it without cloning the Minutes repo. `/minutes record` just works in any CC session.
-**Why:** Every Claude Code user becomes a potential Minutes user. Massive distribution channel, zero-friction adoption.
-**Context:** Added to active scope during CEO review (2026-03-22). Research CC plugin distribution model first.
-**Effort:** M (human: ~1 week / CC: ~30 min)
-**Depends on:** Understanding CC plugin distribution model (research first).
+## ~~P2: Claude Code Plugin Standalone Distribution~~ DONE
+**Shipped:** 2026-03-24. Marketplace manifest at `.claude-plugin/marketplace.json`, plugin manifest at `.claude/plugins/minutes/.claude-plugin/plugin.json`. Install: `claude plugin marketplace add silverstein/minutes && claude plugin install minutes`.
 
 ## P3: Open Source Interactive Skill Template
 **What:** Extract the multi-phase interactive skill pattern into a reusable SKILL-TEMPLATE-INTERACTIVE.md that other Claude Code plugin authors can follow.

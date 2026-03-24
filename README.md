@@ -320,18 +320,18 @@ Minutes exposes a standard MCP server. Point any MCP-compatible client at it:
 
 ### Claude Code (Plugin)
 
-Install the plugin directly from this repo:
-```
-/plugin marketplace add silverstein/minutes
-/plugin install minutes@silverstein-minutes
+Install the plugin from the marketplace:
+```bash
+claude plugin marketplace add silverstein/minutes
+claude plugin install minutes
 ```
 
-11 skills, 1 agent, 2 hooks:
+12 skills, 1 agent, 2 hooks:
 ```
-├── Core: /minutes record, search, list, note, verify, setup, cleanup
+├── Core: /minutes record, search, list, note, ideas, verify, setup, cleanup
 ├── Interactive: /minutes prep, debrief, recap, weekly
 ├── Agent: meeting-analyst (cross-meeting intelligence)
-└── Hooks: post-recording alerts + proactive meeting reminders
+└── Hooks: post-recording alerts + proactive meeting/voice memo reminders
 ```
 
 **Meeting lifecycle skills** — inspired by [gstack](https://github.com/garrytan/gstack)'s interactive skill pattern:
@@ -493,7 +493,7 @@ minutes/
 ├── crates/mcp/     MCP server — 13 tools + 6 resources + interactive dashboard
 │   └── ui/         MCP App dashboard (vanilla TS → single-file HTML)
 ├── tauri/          Menu bar app — system tray, recording UI, singleton AI Assistant
-└── .claude/plugins/minutes/   Claude Code plugin — 11 skills + 1 agent + 2 hooks
+└── .claude/plugins/minutes/   Claude Code plugin — 12 skills + 1 agent + 2 hooks
 ```
 
 Single `minutes-core` library shared by CLI, MCP server, and Tauri app. Zero code duplication.
