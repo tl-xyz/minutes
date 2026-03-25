@@ -56,7 +56,18 @@ action_items:
 decisions:
   - text: Run pricing experiment at monthly billing
     topic: pricing experiment
+speaker_map:
+  - speaker_label: SPEAKER_1
+    name: Mat
+    confidence: high
+    source: enrollment
+  - speaker_label: SPEAKER_2
+    name: Sarah Kim
+    confidence: medium
+    source: deterministic
 ```
+
+**Speaker attribution**: Diarized meetings may have a `speaker_map` field mapping anonymous speaker labels to real names. Confidence levels: `high` (voice enrollment or manual confirm — name is rewritten in transcript), `medium` (deterministic or LLM guess — stored in frontmatter only), `low`. When answering "who said what" questions, check `speaker_map` first — it tells you which `SPEAKER_X` is which person. If attributions are medium confidence, say "SPEAKER_1 is likely Sarah" rather than stating it as fact.
 
 Use these for precise queries. For example, to find all open action items:
 ```bash

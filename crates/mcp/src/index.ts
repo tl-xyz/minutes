@@ -19,6 +19,8 @@
  *   - research_topic: Cross-meeting topic research
  *   - qmd_collection_status: Check QMD collection registration
  *   - register_qmd_collection: Register Minutes output as QMD collection
+ *   - list_voices: List enrolled voice profiles for speaker identification
+ *   - confirm_speaker: Confirm/correct speaker attribution in a meeting
  *
  * All tools use execFile (not exec) to shell out to the `minutes` CLI binary.
  * No shell interpolation — safe from injection.
@@ -1514,6 +1516,76 @@ server.tool(
         },
       ],
     };
+  }
+);
+
+// ── Tool: list_voices ────────────────────────────────────────
+
+server.tool(
+  "list_voices",
+  "List enrolled voice profiles for speaker identification. Shows who has been enrolled, sample count, and model version.",
+  {},
+  { title: "Voice Profiles", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  async () => {
+    if (!(await isCliAvailable())) {
+      return { content: [{ type: "text" as const, text: "Minutes CLI not available." }] };
+    }
+
+    const { stdout, stderr } = await runMinutes(["voices", "--json"]);
+    const profiles = parseJsonOutput(stdout);
+
+    if (!Array.isArray(profiles) || profiles.length === 0) {
+      return {
+        content: [{ type: "text" as const, text: "No voice profiles enrolled. The user can enroll with: minutes enroll" }],
+      };
+    }
+
+    const lines = profiles.map((p: any) =>
+      `${p.name} — ${p.sample_count} samples, ${p.source} (${p.model_version})`
+    );
+
+    return {
+      content: [{ type: "text" as const, text: `Voice profiles (${profiles.length}):\n\n${lines.join("\n")}` }],
+      structuredContent: { profiles, view: "voices" },
+    };
+  }
+);
+
+// ── Tool: confirm_speaker ────────────────────────────────────
+
+server.tool(
+  "confirm_speaker",
+  "Confirm or correct a speaker attribution in a meeting. Promotes the attribution to High confidence and rewrites the transcript label. Optionally saves the speaker's voice profile for future meetings.",
+  {
+    meeting: z.string().describe("Path to the meeting markdown file"),
+    speaker_label: z.string().describe("Speaker label to confirm (e.g., SPEAKER_1)"),
+    name: z.string().describe("Real name to assign to this speaker"),
+    save_voice: z.boolean().optional().default(false).describe("Save this speaker's voice profile for future automatic identification"),
+  },
+  { title: "Confirm Speaker", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  async ({ meeting, speaker_label, name, save_voice }) => {
+    if (!(await isCliAvailable())) {
+      return { content: [{ type: "text" as const, text: "Minutes CLI not available." }] };
+    }
+
+    const args = ["confirm", "--meeting", meeting, "--speaker", speaker_label, "--name", name];
+    if (save_voice) args.push("--save-voice");
+
+    try {
+      const { stdout, stderr } = await runMinutes(args);
+      const output = (stderr || stdout || "").trim();
+
+      return {
+        content: [{ type: "text" as const, text: output || `Confirmed: ${speaker_label} = ${name}` }],
+        structuredContent: { meeting, speaker_label, name, save_voice, confirmed: true },
+      };
+    } catch (error: any) {
+      const msg = error?.stderr || error?.message || String(error);
+      return {
+        content: [{ type: "text" as const, text: `Failed to confirm speaker: ${msg}` }],
+        isError: true,
+      };
+    }
   }
 );
 
