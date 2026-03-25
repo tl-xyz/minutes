@@ -943,6 +943,84 @@
       white-space: pre-wrap;
     }
 
+    .detail-speakers {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+    }
+
+    .detail-speakers-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--text-tertiary);
+      margin-bottom: 8px;
+    }
+
+    .speaker-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      font-size: 13px;
+    }
+
+    .speaker-label {
+      color: var(--text-tertiary);
+      font-family: var(--font-mono, monospace);
+      font-size: 11px;
+      min-width: 80px;
+    }
+
+    .speaker-name {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .speaker-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .speaker-badge.high {
+      background: rgba(52, 199, 89, 0.15);
+      color: #34c759;
+    }
+
+    .speaker-badge.medium {
+      background: rgba(255, 159, 10, 0.15);
+      color: #ff9f0a;
+    }
+
+    .speaker-badge.low {
+      background: rgba(142, 142, 147, 0.15);
+      color: #8e8e93;
+    }
+
+    .speaker-confirm-btn {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .speaker-confirm-btn:hover {
+      background: var(--accent, #0a84ff);
+      color: white;
+      border-color: var(--accent, #0a84ff);
+    }
+
     .detail-section {
       padding-top: 18px;
       border-top: 1px solid rgba(255, 255, 255, 0.04);
@@ -2847,6 +2925,65 @@
         contextCard.appendChild(label);
         contextCard.appendChild(body);
         detailScroll.appendChild(contextCard);
+      }
+
+      // Speaker attribution card
+      if (detail.speaker_map && detail.speaker_map.length > 0) {
+        const speakerCard = document.createElement('div');
+        speakerCard.className = 'detail-speakers';
+
+        const label = document.createElement('div');
+        label.className = 'detail-speakers-label';
+        label.textContent = 'Speakers';
+        speakerCard.appendChild(label);
+
+        for (const attr of detail.speaker_map) {
+          const row = document.createElement('div');
+          row.className = 'speaker-row';
+
+          const labelSpan = document.createElement('span');
+          labelSpan.className = 'speaker-label';
+          labelSpan.textContent = attr.speaker_label;
+          row.appendChild(labelSpan);
+
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'speaker-name';
+          nameSpan.textContent = attr.name;
+          row.appendChild(nameSpan);
+
+          const badge = document.createElement('span');
+          badge.className = `speaker-badge ${attr.confidence}`;
+          badge.textContent = attr.confidence;
+          row.appendChild(badge);
+
+          // Show confirm button for non-high confidence
+          if (attr.confidence !== 'high') {
+            const btn = document.createElement('button');
+            btn.className = 'speaker-confirm-btn';
+            btn.textContent = 'Confirm';
+            btn.onclick = async () => {
+              const newName = prompt(`Confirm speaker name for ${attr.speaker_label}:`, attr.name);
+              if (newName) {
+                try {
+                  await invoke('cmd_confirm_speaker', {
+                    meetingPath: detail.path,
+                    speakerLabel: attr.speaker_label,
+                    name: newName,
+                  });
+                  // Refresh the detail view
+                  openMeetingDetail(detail.path);
+                } catch (e) {
+                  console.error('Confirm speaker failed:', e);
+                }
+              }
+            };
+            row.appendChild(btn);
+          }
+
+          speakerCard.appendChild(row);
+        }
+
+        detailScroll.appendChild(speakerCard);
       }
 
       if (!detail.sections || detail.sections.length === 0) {

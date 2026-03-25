@@ -35,6 +35,14 @@ pub struct MeetingSection {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct SpeakerAttributionView {
+    pub speaker_label: String,
+    pub name: String,
+    pub confidence: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct MeetingDetail {
     pub path: String,
     pub title: String,
@@ -46,6 +54,7 @@ pub struct MeetingDetail {
     pub attendees: Vec<String>,
     pub calendar_event: Option<String>,
     pub sections: Vec<MeetingSection>,
+    pub speaker_map: Vec<SpeakerAttributionView>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -1980,6 +1989,17 @@ pub fn cmd_get_meeting_detail(path: String) -> Result<MeetingDetail, String> {
         .to_string()
     });
 
+    let speaker_map: Vec<SpeakerAttributionView> = frontmatter
+        .speaker_map
+        .iter()
+        .map(|a| SpeakerAttributionView {
+            speaker_label: a.speaker_label.clone(),
+            name: a.name.clone(),
+            confidence: format!("{:?}", a.confidence).to_lowercase(),
+            source: format!("{:?}", a.source).to_lowercase(),
+        })
+        .collect();
+
     Ok(MeetingDetail {
         path,
         title: frontmatter.title,
@@ -1991,7 +2011,57 @@ pub fn cmd_get_meeting_detail(path: String) -> Result<MeetingDetail, String> {
         attendees: frontmatter.attendees,
         calendar_event: frontmatter.calendar_event,
         sections: parse_sections(body),
+        speaker_map,
     })
+}
+
+#[tauri::command]
+pub async fn cmd_list_voices() -> Result<serde_json::Value, String> {
+    let conn = minutes_core::voice::open_db().map_err(|e| e.to_string())?;
+    let profiles = minutes_core::voice::list_profiles(&conn).map_err(|e| e.to_string())?;
+    serde_json::to_value(&profiles).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn cmd_confirm_speaker(
+    meeting_path: String,
+    speaker_label: String,
+    name: String,
+) -> Result<String, String> {
+    let path = std::path::PathBuf::from(&meeting_path);
+    if !path.exists() {
+        return Err(format!("Meeting not found: {}", meeting_path));
+    }
+
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let (fm_str, body) = minutes_core::markdown::split_frontmatter(&content);
+    if fm_str.is_empty() {
+        return Err("Meeting has no frontmatter".into());
+    }
+
+    let mut frontmatter: minutes_core::markdown::Frontmatter =
+        serde_yaml::from_str(fm_str).map_err(|e| e.to_string())?;
+
+    let found = frontmatter
+        .speaker_map
+        .iter_mut()
+        .find(|a| a.speaker_label == speaker_label);
+
+    if let Some(attr) = found {
+        attr.name = name.clone();
+        attr.confidence = minutes_core::diarize::Confidence::High;
+        attr.source = minutes_core::diarize::AttributionSource::Manual;
+    } else {
+        return Err(format!("Speaker '{}' not found in speaker_map", speaker_label));
+    }
+
+    let new_body =
+        minutes_core::diarize::apply_confirmed_names(body, &frontmatter.speaker_map);
+    let new_yaml = serde_yaml::to_string(&frontmatter).map_err(|e| e.to_string())?;
+    let new_content = format!("---\n{}---\n{}", new_yaml, new_body);
+    std::fs::write(&path, new_content).map_err(|e| e.to_string())?;
+
+    Ok(format!("Confirmed: {} = {}", speaker_label, name))
 }
 
 #[tauri::command]

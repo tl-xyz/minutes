@@ -940,6 +940,8 @@ fn main() {
             commands::cmd_recovery_items,
             commands::cmd_retry_recovery,
             commands::cmd_get_meeting_detail,
+            commands::cmd_list_voices,
+            commands::cmd_confirm_speaker,
             commands::cmd_needs_setup,
             commands::cmd_download_model,
             commands::cmd_upcoming_meetings,
