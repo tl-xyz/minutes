@@ -59,7 +59,7 @@ pub fn transcribe(audio_path: &Path, config: &Config) -> Result<String, Transcri
         tracing::debug!("Silero VAD available — skipping energy-based silence stripping");
         samples
     } else {
-        strip_silence(&samples)
+        strip_silence(&samples, 16000)
     };
 
     if samples.is_empty() {
@@ -300,7 +300,7 @@ fn load_wav(path: &Path) -> Result<Vec<f32>, TranscribeError> {
 
     // Auto-normalize: if peak is below target, boost so whisper gets usable levels.
     // Quiet mics (e.g. MacBook Pro) can produce peaks of 0.004 which whisper can't detect.
-    Ok(normalize_audio(resampled))
+    Ok(normalize_audio(&resampled))
 }
 
 /// Decode audio with ffmpeg (preferred for non-WAV formats).
@@ -458,7 +458,7 @@ fn decode_with_symphonia(path: &Path) -> Result<Vec<f32>, TranscribeError> {
         all_samples
     };
 
-    Ok(normalize_audio(resampled))
+    Ok(normalize_audio(&resampled))
 }
 
 // resample() and normalize_audio() are provided by whisper_guard::audio
@@ -475,15 +475,15 @@ use whisper_guard::segments as wg_segments;
 // Thin delegates to whisper-guard (only called by transcribe_with_whisper behind cfg(whisper))
 #[cfg(feature = "whisper")]
 fn dedup_segments(lines: Vec<String>) -> Vec<String> {
-    wg_segments::dedup_segments(lines)
+    wg_segments::dedup_segments(&lines)
 }
 #[cfg(feature = "whisper")]
 fn dedup_interleaved(lines: Vec<String>) -> Vec<String> {
-    wg_segments::dedup_interleaved(lines)
+    wg_segments::dedup_interleaved(&lines)
 }
 #[cfg(feature = "whisper")]
 fn trim_trailing_noise(lines: Vec<String>) -> Vec<String> {
-    wg_segments::trim_trailing_noise(lines)
+    wg_segments::trim_trailing_noise(&lines)
 }
 
 // ── Noise reduction ──────────────────────────────────────────

@@ -34,13 +34,13 @@ pub fn clean_transcript(transcript: &str) -> (String, CleanStats) {
     let lines: Vec<String> = transcript.lines().map(|l| l.to_string()).collect();
     let original_count = lines.len();
 
-    let lines = dedup_segments(lines);
+    let lines = dedup_segments(&lines);
     let after_consecutive = lines.len();
 
-    let lines = dedup_interleaved(lines);
+    let lines = dedup_interleaved(&lines);
     let after_interleaved = lines.len();
 
-    let lines = trim_trailing_noise(lines);
+    let lines = trim_trailing_noise(&lines);
     let after_trim = lines.len();
 
     let stats = CleanStats {
@@ -59,9 +59,9 @@ pub fn clean_transcript(transcript: &str) -> (String, CleanStats) {
 /// Whisper's decoder can get stuck repeating the same text across consecutive segments,
 /// especially on non-English audio. This function detects runs of 3+ consecutive segments
 /// with >80% text overlap and collapses them to the first occurrence.
-pub fn dedup_segments(lines: Vec<String>) -> Vec<String> {
+pub fn dedup_segments(lines: &[String]) -> Vec<String> {
     if lines.len() < 3 {
-        return lines;
+        return lines.to_vec();
     }
 
     // Simple text similarity: ratio of matching chars to total chars (normalized)
@@ -145,9 +145,9 @@ pub fn dedup_segments(lines: Vec<String>) -> Vec<String> {
 /// Strategy: use a sliding window to detect when a single phrase dominates a region.
 /// If any phrase appears in >=50% of lines within a 10-line window, and the window
 /// contains at least 5 such occurrences, collapse the entire dominated region.
-pub fn dedup_interleaved(lines: Vec<String>) -> Vec<String> {
+pub fn dedup_interleaved(lines: &[String]) -> Vec<String> {
     if lines.len() < 6 {
-        return lines;
+        return lines.to_vec();
     }
 
     fn normalize(text: &str) -> String {
@@ -302,7 +302,7 @@ pub fn dedup_interleaved(lines: Vec<String>) -> Vec<String> {
         );
         result
     } else {
-        lines
+        lines.to_vec()
     }
 }
 
@@ -311,9 +311,9 @@ pub fn dedup_interleaved(lines: Vec<String>) -> Vec<String> {
 /// Recordings often capture music, silence, or ambient noise after the conversation
 /// ends. Long runs of `[music]`, `[BLANK_AUDIO]`, or very short filler at the end
 /// add no value and make the transcript look broken.
-pub fn trim_trailing_noise(lines: Vec<String>) -> Vec<String> {
+pub fn trim_trailing_noise(lines: &[String]) -> Vec<String> {
     if lines.is_empty() {
-        return lines;
+        return Vec::new();
     }
 
     fn is_noise(text: &str) -> bool {
@@ -354,7 +354,7 @@ pub fn trim_trailing_noise(lines: Vec<String>) -> Vec<String> {
         ));
         result
     } else {
-        lines
+        lines.to_vec()
     }
 }
 
@@ -391,7 +391,7 @@ mod tests {
             "[0:03] How are you".into(),
             "[0:06] Fine thanks".into(),
         ];
-        let result = dedup_segments(lines.clone());
+        let result = dedup_segments(&lines);
         assert_eq!(result, lines);
     }
 
@@ -404,7 +404,7 @@ mod tests {
             "[0:09] Hello world".into(),
             "[0:12] Something different".into(),
         ];
-        let result = dedup_segments(lines);
+        let result = dedup_segments(&lines);
         assert_eq!(result.len(), 3);
         assert!(result[0].contains("Hello world"));
         assert!(result[1].contains("repeated audio removed"));
@@ -419,7 +419,7 @@ mod tests {
             "[0:06] Ok bene, le macedi diesel".into(),
             "[0:09] Good morning".into(),
         ];
-        let result = dedup_segments(lines);
+        let result = dedup_segments(&lines);
         assert_eq!(result.len(), 3);
         assert!(result[1].contains("repeated audio removed"));
     }
@@ -431,20 +431,20 @@ mod tests {
             "[0:03] Hello world".into(),
             "[0:06] Something else".into(),
         ];
-        let result = dedup_segments(lines.clone());
+        let result = dedup_segments(&lines);
         assert_eq!(result, lines);
     }
 
     #[test]
     fn dedup_handles_empty() {
-        let result = dedup_segments(vec![]);
+        let result = dedup_segments(&vec![]);
         assert!(result.is_empty());
     }
 
     #[test]
     fn dedup_handles_single_line() {
         let lines = vec!["[0:00] Hello".into()];
-        let result = dedup_segments(lines.clone());
+        let result = dedup_segments(&lines);
         assert_eq!(result, lines);
     }
 
@@ -460,7 +460,7 @@ mod tests {
             "[0:18] Second phrase".into(),
             "[0:21] Normal text".into(),
         ];
-        let result = dedup_segments(lines);
+        let result = dedup_segments(&lines);
         assert_eq!(result.len(), 5);
         assert!(result[1].contains("2 identical"));
         assert!(result[3].contains("3 identical"));
@@ -485,7 +485,7 @@ mod tests {
         }
         lines.push("[0:40] Something completely different".into());
 
-        let result = dedup_interleaved(lines);
+        let result = dedup_interleaved(&lines);
         assert!(
             result.len() <= 4,
             "expected <=4 lines, got {}: {:?}",
@@ -512,7 +512,7 @@ mod tests {
             "[0:20] Sure what's the update".into(),
             "[0:25] We shipped the feature".into(),
         ];
-        let result = dedup_interleaved(lines.clone());
+        let result = dedup_interleaved(&lines);
         assert_eq!(result, lines);
     }
 
@@ -526,7 +526,7 @@ mod tests {
             "[0:08] Hello world".into(),
             "[0:10] Something else".into(),
         ];
-        let result = dedup_interleaved(lines.clone());
+        let result = dedup_interleaved(&lines);
         assert_eq!(result, lines);
     }
 
@@ -541,7 +541,7 @@ mod tests {
         for i in 0..20 {
             lines.push(format!("[{}:00] [music]", i + 1));
         }
-        let result = trim_trailing_noise(lines);
+        let result = trim_trailing_noise(&lines);
         assert_eq!(result.len(), 3);
         assert!(result[0].contains("Hello world"));
         assert!(result[1].contains("real content"));
@@ -556,19 +556,19 @@ mod tests {
             "[0:10] [music]".into(),
             "[0:15] [music]".into(),
         ];
-        let result = trim_trailing_noise(lines.clone());
+        let result = trim_trailing_noise(&lines);
         assert_eq!(result, lines);
     }
 
     #[test]
     fn trim_handles_empty() {
-        assert!(trim_trailing_noise(vec![]).is_empty());
+        assert!(trim_trailing_noise(&vec![]).is_empty());
     }
 
     #[test]
     fn trim_all_noise() {
         let lines: Vec<String> = (0..10).map(|i| format!("[{}:00] [music]", i)).collect();
-        let result = trim_trailing_noise(lines);
+        let result = trim_trailing_noise(&lines);
         assert_eq!(result.len(), 1);
         assert!(result[0].contains("trailing noise removed"));
     }

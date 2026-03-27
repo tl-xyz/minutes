@@ -13,28 +13,28 @@
 /// 3. Replaces silence gaps >500ms with 300ms of zero padding (enough for
 ///    whisper to detect a segment boundary without triggering hallucination)
 ///
-/// **Note**: Assumes 16kHz mono input (whisper's native rate). The internal
-/// chunk sizes and timing thresholds are calibrated for 16kHz. Resample
-/// to 16kHz before calling this function.
-pub fn strip_silence(samples: &[f32]) -> Vec<f32> {
-    const SAMPLE_RATE: usize = 16000;
-    const CHUNK_SIZE: usize = SAMPLE_RATE / 10; // 100ms chunks
-    const MAX_SILENCE_CHUNKS: usize = 5; // 500ms — silence beyond this gets trimmed
-    const PAD_CHUNKS: usize = 3; // 300ms of silence inserted at gap boundaries
-    const CONTEXT_CHUNKS: usize = 2; // 200ms of context kept around speech
+/// Accepts any sample rate. Chunk sizes and timing thresholds are scaled
+/// proportionally from a 16kHz baseline (100ms chunks, 500ms max silence,
+/// 300ms padding, 200ms context, 500ms hangover).
+pub fn strip_silence(samples: &[f32], sample_rate: u32) -> Vec<f32> {
+    let rate = sample_rate as usize;
+    let chunk_size = rate / 10; // 100ms chunks
+    let max_silence_chunks: usize = 5; // 500ms
+    let pad_chunks: usize = 3; // 300ms
+    let context_chunks: usize = 2; // 200ms
     const ENERGY_MULTIPLIER: f32 = 4.0; // speech must be 4x above noise floor
 
-    if samples.len() < CHUNK_SIZE * 3 {
+    if samples.len() < chunk_size * 3 {
         return samples.to_vec();
     }
 
-    let num_chunks = samples.len() / CHUNK_SIZE;
+    let num_chunks = samples.len() / chunk_size;
 
     // Phase 1: compute RMS per chunk
     let rms_values: Vec<f32> = (0..num_chunks)
         .map(|i| {
-            let start = i * CHUNK_SIZE;
-            let end = (start + CHUNK_SIZE).min(samples.len());
+            let start = i * chunk_size;
+            let end = (start + chunk_size).min(samples.len());
             let chunk = &samples[start..end];
             (chunk.iter().map(|s| s * s).sum::<f32>() / chunk.len() as f32).sqrt()
         })
@@ -51,23 +51,23 @@ pub fn strip_silence(samples: &[f32]) -> Vec<f32> {
     // Phase 3: classify chunks as speech (with hangover to avoid flapping)
     let mut is_speech = vec![false; num_chunks];
     let mut hangover = 0u32;
-    const HANGOVER_CHUNKS: u32 = 5; // 500ms hangover
+    let hangover_chunks: u32 = 5; // 500ms hangover
     for (i, rms) in rms_values.iter().enumerate() {
         if *rms > threshold {
             is_speech[i] = true;
-            hangover = HANGOVER_CHUNKS;
+            hangover = hangover_chunks;
         } else if hangover > 0 {
             is_speech[i] = true;
             hangover -= 1;
         }
     }
 
-    // Phase 4: expand speech regions by CONTEXT_CHUNKS in each direction
+    // Phase 4: expand speech regions by context_chunks in each direction
     let mut keep = is_speech.clone();
     for (i, &speech) in is_speech.iter().enumerate() {
         if speech {
-            let from = i.saturating_sub(CONTEXT_CHUNKS);
-            let to = (i + CONTEXT_CHUNKS + 1).min(num_chunks);
+            let from = i.saturating_sub(context_chunks);
+            let to = (i + context_chunks + 1).min(num_chunks);
             for k in &mut keep[from..to] {
                 *k = true;
             }
@@ -77,34 +77,34 @@ pub fn strip_silence(samples: &[f32]) -> Vec<f32> {
     // Phase 5: assemble output — keep speech, replace long silence with short pad
     let mut output = Vec::with_capacity(samples.len());
     let mut consecutive_silence = 0usize;
-    let silence_pad: Vec<f32> = vec![0.0; PAD_CHUNKS * CHUNK_SIZE];
+    let silence_pad: Vec<f32> = vec![0.0; pad_chunks * chunk_size];
 
     for (i, &kept) in keep.iter().enumerate() {
-        let start = i * CHUNK_SIZE;
-        let end = (start + CHUNK_SIZE).min(samples.len());
+        let start = i * chunk_size;
+        let end = (start + chunk_size).min(samples.len());
 
         if kept {
-            if consecutive_silence > MAX_SILENCE_CHUNKS {
+            if consecutive_silence > max_silence_chunks {
                 output.extend_from_slice(&silence_pad);
             }
             consecutive_silence = 0;
             output.extend_from_slice(&samples[start..end]);
         } else {
             consecutive_silence += 1;
-            if consecutive_silence <= MAX_SILENCE_CHUNKS {
+            if consecutive_silence <= max_silence_chunks {
                 output.extend_from_slice(&samples[start..end]);
             }
         }
     }
 
     // Include any trailing partial chunk
-    let remainder_start = num_chunks * CHUNK_SIZE;
+    let remainder_start = num_chunks * chunk_size;
     if remainder_start < samples.len() {
         output.extend_from_slice(&samples[remainder_start..]);
     }
 
-    let original_secs = samples.len() as f64 / SAMPLE_RATE as f64;
-    let stripped_secs = output.len() as f64 / SAMPLE_RATE as f64;
+    let original_secs = samples.len() as f64 / rate as f64;
+    let stripped_secs = output.len() as f64 / rate as f64;
     if stripped_secs < original_secs * 0.95 {
         tracing::info!(
             original_secs = format!("{:.1}", original_secs),
@@ -119,9 +119,9 @@ pub fn strip_silence(samples: &[f32]) -> Vec<f32> {
 
 /// Normalize audio to a target peak level for consistent whisper input.
 /// Only boosts quiet audio — already-loud recordings are left untouched.
-pub fn normalize_audio(mut samples: Vec<f32>) -> Vec<f32> {
+pub fn normalize_audio(samples: &[f32]) -> Vec<f32> {
     if samples.is_empty() {
-        return samples;
+        return Vec::new();
     }
 
     let peak = samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
@@ -133,20 +133,19 @@ pub fn normalize_audio(mut samples: Vec<f32>) -> Vec<f32> {
     const NOISE_FLOOR: f32 = 0.0001;
 
     if peak < QUIET_THRESHOLD && peak > NOISE_FLOOR {
-        let gain = TARGET_PEAK / peak;
-        // Cap gain at 100x to avoid amplifying pure noise
-        let gain = gain.min(100.0);
+        let gain = (TARGET_PEAK / peak).min(100.0);
         tracing::info!(
             peak = format!("{:.4}", peak),
             gain = format!("{:.1}x", gain),
             "auto-normalizing quiet audio"
         );
-        for s in &mut samples {
-            *s = (*s * gain).clamp(-1.0, 1.0);
-        }
+        samples
+            .iter()
+            .map(|s| (s * gain).clamp(-1.0, 1.0))
+            .collect()
+    } else {
+        samples.to_vec()
     }
-
-    samples
 }
 
 /// Windowed-sinc resampler for high-quality rate conversion.
@@ -251,7 +250,7 @@ mod tests {
     #[test]
     fn normalize_boosts_quiet_audio() {
         let samples = vec![0.005f32, -0.008, 0.01, -0.003, 0.007];
-        let normalized = normalize_audio(samples);
+        let normalized = normalize_audio(&samples);
         let peak = normalized.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         assert!(peak > 0.4, "expected peak > 0.4, got {}", peak);
         assert!(peak <= 0.5, "expected peak <= 0.5, got {}", peak);
@@ -260,14 +259,14 @@ mod tests {
     #[test]
     fn normalize_leaves_loud_audio_untouched() {
         let samples = vec![0.3f32, -0.5, 0.2, -0.1];
-        let normalized = normalize_audio(samples.clone());
+        let normalized = normalize_audio(&samples);
         assert_eq!(samples, normalized);
     }
 
     #[test]
     fn normalize_ignores_noise_floor() {
         let samples = vec![0.00001f32, -0.00002, 0.00001];
-        let normalized = normalize_audio(samples.clone());
+        let normalized = normalize_audio(&samples);
         assert_eq!(samples, normalized);
     }
 
@@ -276,7 +275,7 @@ mod tests {
         let speech: Vec<f32> = (0..16000)
             .map(|i| 0.5 * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin())
             .collect();
-        let result = strip_silence(&speech);
+        let result = strip_silence(&speech, 16000);
         assert_eq!(result.len(), speech.len());
     }
 
@@ -291,7 +290,7 @@ mod tests {
             samples.push(0.5 * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin());
         }
 
-        let result = strip_silence(&samples);
+        let result = strip_silence(&samples, 16000);
         let original_secs = samples.len() as f64 / 16000.0;
         let result_secs = result.len() as f64 / 16000.0;
         assert!(
@@ -318,7 +317,7 @@ mod tests {
             samples.push(0.5 * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin());
         }
 
-        let result = strip_silence(&samples);
+        let result = strip_silence(&samples, 16000);
         let ratio = result.len() as f64 / samples.len() as f64;
         assert!(
             ratio > 0.9,
@@ -330,7 +329,7 @@ mod tests {
     #[test]
     fn strip_silence_handles_all_silence() {
         let samples = vec![0.0f32; 16000 * 10];
-        let result = strip_silence(&samples);
+        let result = strip_silence(&samples, 16000);
         assert!(result.len() < samples.len() / 2, "should trim most silence");
     }
 
