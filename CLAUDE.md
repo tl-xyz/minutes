@@ -120,6 +120,7 @@ certificate or local notarization credentials.
 | **README accuracy** | New/removed tools, features, crates, or CLI commands | Tool/resource counts, crate list in Architecture, feature sections, and CLI examples in README.md must reflect the current state. Check: tool count matches `manifest.json`, crate list matches `ls crates/*/`, module count matches `ls crates/core/src/*.rs` |
 | **npm dep versions** | Version bumps | `crates/mcp/package.json` `minutes-sdk` dep must reference a version that's actually published on npm. Check with `npm view minutes-sdk versions --json` |
 | **Release notes drafted** | Version bumps / releases | Every release is a visibility moment in followers' GitHub feeds. Draft compelling release notes BEFORE creating the release. No empty releases — ever. See Release Checklist step 5. |
+| **Release warranted?** | New/removed MCP tools, new CLI commands, user-facing features | Manifest changes (new tools, updated description) don't reach Claude Desktop users until a release is cut and `.mcpb` is uploaded. If the change is user-visible, plan a release. |
 
 ## Release Checklist
 
