@@ -1,3 +1,4 @@
+use crate::config::Config;
 use std::process::Command;
 use std::time::Duration;
 
@@ -9,6 +10,8 @@ use std::time::Duration;
 // all events for today and filters by time in the script.
 //
 // Also tries a compiled EventKit helper if available.
+//
+// Respects [calendar] include config to filter by calendar name.
 // ──────────────────────────────────────────────────────────────
 
 /// Maximum time to wait for a calendar subprocess before giving up.
@@ -49,6 +52,17 @@ pub(crate) fn output_with_timeout(
             None
         }
     }
+}
+
+/// Build an AppleScript list literal from the calendar include filter.
+/// Returns empty string when no filter is configured (read all calendars).
+fn allowed_cals_applescript() -> String {
+    let include = &Config::load().calendar.include;
+    if include.is_empty() {
+        return String::new();
+    }
+    let items: Vec<String> = include.iter().map(|n| format!("\"{}\"", n)).collect();
+    format!("set allowedCals to {{{}}}\n", items.join(", "))
 }
 
 /// A calendar event with title, start time, attendees, and optional meeting URL.
@@ -153,7 +167,11 @@ pub fn events_overlapping_now() -> Vec<CalendarEvent> {
 
 /// AppleScript query that fetches current/recent events WITH attendee names.
 fn query_events_with_attendees() -> Vec<CalendarEvent> {
-    let script = r#"set now to current date
+    let filter_decl = allowed_cals_applescript();
+    let has_filter = !filter_decl.is_empty();
+
+    let script = format!(
+        r#"set now to current date
 set windowStart to now - (2 * 60 * 60)
 set windowEnd to now + (2 * 60 * 60)
 set todayStart to current date
@@ -164,10 +182,10 @@ set tomorrowEnd to todayStart + (2 * 24 * 60 * 60)
 set output to ""
 set unitSep to (ASCII character 31)
 set fieldSep to (ASCII character 30)
-tell application "Calendar"
+{filter_decl}tell application "Calendar"
     repeat with cal in calendars
         try
-            set evts to (every event of cal whose start date >= todayStart and start date <= tomorrowEnd)
+            {cal_guard_open}set evts to (every event of cal whose start date >= todayStart and start date <= tomorrowEnd)
             repeat with evt in evts
                 set s to start date of evt
                 set e to end date of evt
@@ -192,13 +210,18 @@ tell application "Calendar"
                     set output to output & t & unitSep & (s as string) & unitSep & mins & unitSep & attendeeNames & unitSep & loc & linefeed
                 end if
             end repeat
+            {cal_guard_close}
         end try
     end repeat
 end tell
-return output"#;
+return output"#,
+        filter_decl = filter_decl,
+        cal_guard_open = if has_filter { "if name of cal is in allowedCals then\n            " } else { "" },
+        cal_guard_close = if has_filter { "end if" } else { "" },
+    );
 
     let mut cmd = Command::new("osascript");
-    cmd.arg("-e").arg(script);
+    cmd.arg("-e").arg(&script);
     let output = match output_with_timeout(cmd, SUBPROCESS_TIMEOUT) {
         Some(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
         _ => return Vec::new(),
@@ -288,7 +311,9 @@ fn find_calendar_helper() -> Option<std::path::PathBuf> {
 /// AppleScript approach: fetch ALL events for today+tomorrow, filter by time.
 /// Avoids `whose start date >= ...` which times out on CalDAV calendars.
 fn query_via_applescript(lookahead_minutes: u32) -> Vec<CalendarEvent> {
-    // Fetch events for a 2-day window, then filter in the script
+    let filter_decl = allowed_cals_applescript();
+    let has_filter = !filter_decl.is_empty();
+
     let script = format!(
         r#"set now to current date
 set todayStart to current date
@@ -299,10 +324,10 @@ set tomorrowEnd to todayStart + (2 * 24 * 60 * 60)
 set lookaheadSecs to {minutes} * 60
 set horizon to now + lookaheadSecs
 set output to ""
-tell application "Calendar"
+{filter_decl}tell application "Calendar"
     repeat with cal in calendars
         try
-            set evts to (every event of cal whose start date >= todayStart and start date <= tomorrowEnd)
+            {cal_guard_open}set evts to (every event of cal whose start date >= todayStart and start date <= tomorrowEnd)
             repeat with evt in evts
                 set s to start date of evt
                 if s >= now and s <= horizon then
@@ -316,11 +341,15 @@ tell application "Calendar"
                     set output to output & t & (ASCII character 31) & (s as string) & (ASCII character 31) & mins & (ASCII character 31) & loc & linefeed
                 end if
             end repeat
+            {cal_guard_close}
         end try
     end repeat
 end tell
 return output"#,
-        minutes = lookahead_minutes
+        minutes = lookahead_minutes,
+        filter_decl = filter_decl,
+        cal_guard_open = if has_filter { "if name of cal is in allowedCals then\n            " } else { "" },
+        cal_guard_close = if has_filter { "end if" } else { "" },
     );
 
     let mut cmd = Command::new("osascript");
@@ -419,5 +448,12 @@ mod tests {
             extract_meeting_url(text),
             Some("https://us02web.zoom.us/j/8765432?pwd=xyz".to_string())
         );
+    }
+
+    #[test]
+    fn allowed_cals_empty_when_no_config() {
+        // Default config has empty include list
+        let result = allowed_cals_applescript();
+        assert!(result.is_empty());
     }
 }

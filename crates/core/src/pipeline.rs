@@ -401,6 +401,7 @@ where
     let duration = estimate_duration(audio_path);
     let auto_title = title
         .map(String::from)
+        .or_else(|| calendar_event_title.clone())
         .unwrap_or_else(|| generate_title(&transcript, pre_context.as_deref()));
     let entities = build_entity_links(
         &auto_title,
