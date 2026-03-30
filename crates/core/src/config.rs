@@ -27,6 +27,7 @@ pub struct Config {
     pub dictation: DictationConfig,
     pub voice: VoiceConfig,
     pub live_transcript: LiveTranscriptConfig,
+    pub calendar: CalendarConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,6 +248,14 @@ impl Default for LiveTranscriptConfig {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CalendarConfig {
+    /// Only read events from these calendar names.
+    /// Empty list = read all calendars (backwards-compatible default).
+    pub include: Vec<String>,
+}
+
 impl Default for ScreenContextConfig {
     fn default() -> Self {
         Self {
@@ -312,6 +321,7 @@ impl Default for Config {
             dictation: DictationConfig::default(),
             voice: VoiceConfig::default(),
             live_transcript: LiveTranscriptConfig::default(),
+            calendar: CalendarConfig::default(),
         }
     }
 }
